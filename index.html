@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Servsys – AI Recruiter Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 30px auto;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 24px;
+      color: #222;
+    }
+    h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 6px;
+      color: #444;
+    }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .col {
+      flex: 1;
+      min-width: 280px;
+    }
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 20px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.05s ease, box-shadow 0.05s ease, background 0.2s ease;
+    }
+    button.primary {
+      background: #ff6a00; /* Servsys-like orange */
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(255,106,0,0.4);
+    }
+    button.secondary {
+      background: #ffffff;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    button:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+    .status {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 8px;
+      min-height: 18px;
+    }
+    .output {
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid #eee;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .api-warning {
+      padding: 8px 10px;
+      background: #fff8e1;
+      border-radius: 8px;
+      border: 1px solid #ffe0a1;
+      font-size: 12px;
+      color: #8a6d1a;
+      margin-bottom: 12px;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #aaa;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Servsys AI Recruiter Assistant</h1>
+    <p style="font-size:14px;color:#555;">
+      Upload a Job Description and resumes, then choose a mode:
+      <strong>Resume Evaluation</strong> or <strong>Screening Questions</strong>.
+    </p>
+
+    <div class="api-warning">
+      Note: For security, do NOT commit your real API key to public GitHub. Use environment variables or a proxy in production.
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <h2>Job Description (JD)</h2>
+        <label for="jd">Paste full JD here:</label>
+        <textarea id="jd" placeholder="Paste the job description here..."></textarea>
+      </div>
+      <div class="col">
+        <h2>Resumes (optional)</h2>
+        <label for="resumes">Paste one or more resumes here (separate by a line of dashes or blank line):</label>
+        <textarea id="resumes" placeholder="Paste resumes here if you want evaluation..."></textarea>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="primary" id="btn-eval">Resume Evaluation Mode</button>
+      <button class="secondary" id="btn-questions">Screening Questions Mode</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div>
+      <h2>Output</h2>
+      <div class="output" id="output"></div>
+    </div>
+
+    <div class="footer">
+      Servsys internal tool – AI-powered resume analysis and interview support.
+    </div>
+  </div>
+
+  <script>
+    // ========= CONFIG =========
+    const OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"; // <- Replace this
+    // If using Assistants API, set your assistant ID here:
+    const ASSISTANT_ID = "YOUR_ASSISTANT_ID"; // Optional: only if using Assistants
+
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+
+    async function callOpenAI(mode, jd, resumes) {
+      statusEl.textContent = "Calling AI agent, please wait...";
+      outputEl.textContent = "";
+
+      if (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_OPENAI_API_KEY") {
+        statusEl.textContent = "Error: Please set your OpenAI API key in the code.";
+        return;
+      }
+
+      const systemInstruction = `
+You are an internal recruitment assistant for Servsys. You support two modes:
+1) RESUME_EVAL_MODE – Evaluate resumes against a JD and recommend who to submit, who not to submit, and who to keep as backup. Provide:
+   - Match score (0–100)
+   - Must-have vs nice-to-have mapping
+   - Strengths and gaps
+   - Risks/red flags
+   - Submission recommendation
+   - Ranking for multiple resumes
+2) SCREENING_QUESTIONS_MODE – Generate structured screening questions from the JD for phone/video screening. Provide:
+   - JD analysis (must-have, nice-to-have, responsibilities)
+   - Sections: Intro/Background, Must-have technical, Nice-to-have/advanced, Soft skills, Language/communication
+   - For key questions: purpose, strong answer hints, red flags, suggested scoring.
+
+Always respond in a structured, recruiter-friendly format.
+Current mode: ${mode}.
+      `.trim();
+
+      let userContent;
+      if (mode === "RESUME_EVAL_MODE") {
+        userContent = `
+MODE: RESUME_EVAL_MODE
+
+Job Description:
+${jd}
+
+Resumes:
+${resumes}
+
+Evaluate each resume against the JD using your resume evaluation workflow.
+        `.trim();
+      } else {
+        userContent = `
+MODE: SCREENING_QUESTIONS_MODE
+
+Job Description:
+${jd}
+
+Generate a structured set of screening questions as per your screening questions workflow.
+        `.trim();
+      }
+
+      try {
+        // Using the Chat Completions API (simple and direct)
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini", // or "gpt-4.1" / "gpt-5.1" depending on your plan
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: userContent }
+            ],
+            temperature: 0.3
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error("API error: " + errText);
+        }
+
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content || "(No response)";
+        outputEl.textContent = text;
+        statusEl.textContent = "Done.";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Error: " + err.message;
+      }
+    }
+
+    document.getElementById("btn-eval").addEventListener("click", () => {
+      const jd = document.getElementById("jd").value.trim();
+      const resumes = document.getElementById("resumes").value.trim();
+      if (!jd) {
+        statusEl.textContent = "Please paste a Job Description (JD) first.";
+        return;
+      }
+      if (!resumes) {
+        statusEl.textContent = "Please paste at least one resume for evaluation mode.";
+        return;
+      }
+      callOpenAI("RESUME_EVAL_MODE", jd, resumes);
+    });
+
+    document.getElementById("btn-questions").addEventListener("click", () => {
+      const jd = document.getElementById("jd").value.trim();
+      if (!jd) {
+        statusEl.textContent = "Please paste a Job Description (JD) to generate screening questions.";
+        return;
+      }
+      callOpenAI("SCREENING_QUESTIONS_MODE", jd, "");
+    });
+  </script>
+</body>
+</html>
